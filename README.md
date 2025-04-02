@@ -1,5 +1,7 @@
 # Welcome to your Expo app 👋
 
+[Download App](https://expo.dev/accounts/imperior9936/projects/iChat/builds/7e804e08-a255-459e-86f6-d3702524140f)
+
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
 ## Get started
