@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, KeyboardAvoidingView, Platform,ActivityIndicator,Alert} from 'react-native';
+import {View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, KeyboardAvoidingView, Platform,ActivityIndicator,Alert,Pressable,Modal} from 'react-native';
 import { supabase } from '@/utils/supabase';
 import { useLocalSearchParams } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 // Define types for our chat data
 type ChatMessage = {
@@ -25,6 +26,11 @@ const Chats: React.FC<ChatsProps> = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [selectedMessage, setSelectedMessage] = useState<ChatMessage | null>(null);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editText, setEditText] = useState('');
+  const [optionsVisible, setOptionsVisible] = useState(false);
+  
   const flatListRef = useRef<FlatList>(null);
   const params = useLocalSearchParams();
   const currentUserId = params.currentUserId as string;
@@ -97,7 +103,7 @@ const Chats: React.FC<ChatsProps> = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentUserId, receiverId,MessageChannel]);
+  }, [currentUserId, receiverId]);
 
   // Fetch all messages between the two users
   const fetchMessages = async () => {
@@ -152,7 +158,6 @@ const Chats: React.FC<ChatsProps> = () => {
       // Clear input field after sending
       setNewMessage('');
       
-      // No need to call fetchMessages() as the real-time subscription will handle this
     } catch (error) {
       console.error('Error sending message:', error);
       Alert.alert('Error', 'Failed to send message. Please try again.');
@@ -160,12 +165,12 @@ const Chats: React.FC<ChatsProps> = () => {
   };
 
   // Delete a message
-  const deleteMessage = async (id: string) => {
+  const deleteMessage = async (message: ChatMessage) => {
     try {
       const { error } = await supabase
         .from('chats')
         .delete()
-        .eq('id', id);
+        .eq('id', message.id);
         
       if (error) {
         console.error('Error deleting message:', error);
@@ -173,22 +178,25 @@ const Chats: React.FC<ChatsProps> = () => {
         return;
       }
       
-      // No need to update state manually as real-time subscription will handle this
+      // Close message options after action
+      setSelectedMessage(null);
+      setOptionsVisible(false);
+      
     } catch (error) {
       console.error('Error deleting message:', error);
       Alert.alert('Error', 'Failed to delete message. Please try again.');
     }
   };
 
-  // Edit a message
-  const updateMessage = async (id: string, updatedText: string) => {
-    if (!updatedText.trim()) return;
+  // Update a message
+  const updateMessage = async () => {
+    if (!editText.trim() || !selectedMessage) return;
     
     try {
       const { error } = await supabase
         .from('chats')
-        .update({ chats: updatedText.trim() })
-        .eq('id', id);
+        .update({ chats: editText.trim() })
+        .eq('id', selectedMessage.id);
         
       if (error) {
         console.error('Error updating message:', error);
@@ -196,11 +204,59 @@ const Chats: React.FC<ChatsProps> = () => {
         return;
       }
       
-      // No need to update state manually as real-time subscription will handle this
+      // Close modals after successful update
+      setEditModalVisible(false);
+      setOptionsVisible(false);
+      setSelectedMessage(null);
+      
     } catch (error) {
       console.error('Error updating message:', error);
       Alert.alert('Error', 'Failed to update message. Please try again.');
     }
+  };
+
+  // Handle long press on a message
+  const handleLongPress = (message: ChatMessage) => {
+    // Only allow actions on messages sent by current user
+    if (message.sender === currentUserId) {
+      setSelectedMessage(message);
+      setEditText(message.chats);
+      setOptionsVisible(true);
+    }
+  };
+
+  // Show the edit modal
+  const handleEditPress = () => {
+    setOptionsVisible(false);
+    setEditModalVisible(true);
+  };
+
+  // Confirm deletion with dialog
+  const handleDeletePress = () => {
+    setOptionsVisible(false);
+    
+    Alert.alert(
+      'Delete Message',
+      'Are you sure you want to delete this message?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Delete', 
+          onPress: () => selectedMessage && deleteMessage(selectedMessage),
+          style: 'destructive'
+        }
+      ]
+    );
+  };
+
+  // Close all modals
+  const closeAllModals = () => {
+    setOptionsVisible(false);
+    setEditModalVisible(false);
+    setSelectedMessage(null);
   };
 
   // Render a single message
@@ -208,61 +264,25 @@ const Chats: React.FC<ChatsProps> = () => {
     const isCurrentUser = item.sender === currentUserId;
     
     return (
-      <View style={[
-        styles.messageContainer,
-        isCurrentUser ? styles.sentMessage : styles.receivedMessage
-      ]}>
-        <View style={styles.messageContent}>
-          <Text style={styles.messageText}>{item.chats}</Text>
-          <Text style={styles.timeText}>
-            {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </Text>
-        </View>
-        
-        {isCurrentUser && (
-          <View style={styles.messageActions}>
-            <TouchableOpacity 
-              onPress={() => {
-                Alert.prompt(
-                  'Edit Message',
-                  'Edit your message',
-                  [
-                    {text: 'Cancel', onPress: () => console.log('Cancel Pressed'), style: 'cancel'},
-                    {text: 'OK', onPress: (newText) => updateMessage(item.id, newText || "")},
-                  ],
-                  'plain-text',
-                  item.chats
-                );
-              }}
-              style={styles.actionButton}
-            >
-              <Text style={styles.actionText}>Edit</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              onPress={() => {
-                Alert.alert(
-                  'Delete Message',
-                  'Are you sure you want to delete this message?',
-                  [
-                    {
-                      text: 'Cancel',
-                      style: 'cancel',
-                    },
-                    {
-                      text: 'Delete', 
-                      onPress: () => deleteMessage(item.id),
-                      style: 'destructive'
-                    }
-                  ]
-                );
-              }}
-              style={[styles.actionButton, styles.deleteButton]}
-            >
-              <Text style={styles.actionText}>Delete</Text>
-            </TouchableOpacity>
+      <Pressable
+        onLongPress={() => handleLongPress(item)}
+        delayLongPress={300}
+        style={({ pressed }) => [
+          { opacity: pressed ? 0.8 : 1 }
+        ]}
+      >
+        <View style={[
+          styles.messageContainer,
+          isCurrentUser ? styles.sentMessage : styles.receivedMessage
+        ]}>
+          <View style={styles.messageContent}>
+            <Text style={styles.messageText}>{item.chats}</Text>
+            <Text style={styles.timeText}>
+              {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Text>
           </View>
-        )}
-      </View>
+        </View>
+      </Pressable>
     );
   };
 
@@ -279,13 +299,13 @@ const Chats: React.FC<ChatsProps> = () => {
             style={{ padding: 10 }}
             onPress={() => Alert.alert('Video Call', 'Video call feature coming soon!')}
           >
-            <Text style={{ color: 'white',justifyContent:'center' }}><MaterialCommunityIcons name="video" size={30} color="white" /></Text>
+            <MaterialCommunityIcons name="video" size={30} color="white" />
           </TouchableOpacity>
           <TouchableOpacity 
             style={{ padding: 10 }}
-            onPress={() => Alert.alert('Voice Call', 'Video call feature coming soon!')}
+            onPress={() => Alert.alert('Voice Call', 'Voice call feature coming soon!')}
           >
-            <Text style={{ color: 'white', fontSize: 20 }}><MaterialIcons name="wifi-calling-3" size={24} color="white" /></Text>
+            <MaterialIcons name="wifi-calling-3" size={24} color="white" />
           </TouchableOpacity>
         </View>
       </View>
@@ -321,9 +341,65 @@ const Chats: React.FC<ChatsProps> = () => {
           onPress={sendMessage}
           disabled={!newMessage.trim()}
         >
-          <Text style={styles.sendButtonText}><FontAwesome name="send" size={24} color="white" /></Text>
+          <FontAwesome name="send" size={24} color="white" />
         </TouchableOpacity>
       </View>
+
+      {/* Message Options Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={optionsVisible}
+        onRequestClose={closeAllModals}
+      >
+        <Pressable style={styles.modalOverlay} onPress={closeAllModals}>
+          <View style={styles.optionsContainer}>
+            <TouchableOpacity style={styles.optionButton} onPress={handleEditPress}>
+              <Ionicons name="pencil" size={24} color="#0084ff" />
+              <Text style={styles.optionText}>Edit Message</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.optionButton} onPress={handleDeletePress}>
+              <Ionicons name="trash" size={24} color="#ff3b30" />
+              <Text style={[styles.optionText, styles.deleteText]}>Delete Message</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Edit Message Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={editModalVisible}
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <View style={styles.editModalContainer}>
+          <View style={styles.editModalContent}>
+            <Text style={styles.editModalTitle}>Edit Message</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editText}
+              onChangeText={setEditText}
+              multiline
+              autoFocus
+            />
+            <View style={styles.editModalButtons}>
+              <TouchableOpacity 
+                style={[styles.editModalButton, styles.cancelButton]} 
+                onPress={() => setEditModalVisible(false)}
+              >
+                <Text style={styles.buttonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.editModalButton, styles.saveButton]} 
+                onPress={updateMessage}
+              >
+                <Text style={styles.buttonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
@@ -336,6 +412,8 @@ const styles = StyleSheet.create({
   header: {
     padding: 15,
     backgroundColor: '#0084ff',
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   headerText: {
     fontSize: 18,
@@ -381,23 +459,6 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     marginTop: 5,
   },
-  messageActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 5,
-  },
-  actionButton: {
-    padding: 5,
-    marginLeft: 5,
-  },
-  deleteButton: {
-    backgroundColor: 'rgba(255, 0, 0, 0.2)',
-    borderRadius: 5,
-  },
-  actionText: {
-    fontSize: 12,
-    color: 'white',
-  },
   inputContainer: {
     flexDirection: 'row',
     padding: 10,
@@ -418,15 +479,103 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#0084ff',
     borderRadius: 25,
-    paddingHorizontal: 15,
+    width: 50,
+    height: 50,
     marginLeft: 10,
   },
   disabledButton: {
     backgroundColor: '#c0c0c0',
   },
-  sendButtonText: {
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  optionsContainer: {
+    width: '70%',
+    backgroundColor: 'white',
+    borderRadius: 15,
+    padding: 15,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  optionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  optionText: {
+    marginLeft: 15,
+    fontSize: 16,
+    color: '#333',
+  },
+  deleteText: {
+    color: '#ff3b30',
+  },
+  editModalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  editModalContent: {
+    width: '90%',
+    backgroundColor: 'white',
+    borderRadius: 15,
+    padding: 20,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  editModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    color: '#333',
+  },
+  editInput: {
+    backgroundColor: '#f0f0f0',
+    borderRadius: 10,
+    padding: 15,
+    fontSize: 16,
+    minHeight: 100,
+    textAlignVertical: 'top',
+    marginBottom: 15,
+  },
+  editModalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  editModalButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginLeft: 10,
+  },
+  cancelButton: {
+    backgroundColor: '#e0e0e0',
+  },
+  saveButton: {
+    backgroundColor: '#0084ff',
+  },
+  buttonText: {
     color: 'white',
     fontWeight: 'bold',
+    fontSize: 16,
   },
 });
 
