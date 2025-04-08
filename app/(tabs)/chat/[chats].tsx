@@ -92,9 +92,16 @@ const Chats: React.FC<ChatsProps> = () => {
           (deletedMsg.sender === currentUserId && deletedMsg.receiver === receiverId) ||
           (deletedMsg.sender === receiverId && deletedMsg.receiver === currentUserId)
         ) {
+          // Use strict equality operator for reliable filtering
           setMessages((prevMessages) => 
             prevMessages.filter(msg => msg.id !== deletedMsg.id)
           );
+          
+          // If the deleted message was selected, clear the selection
+          if (selectedMessage && selectedMessage.id === deletedMsg.id) {
+            setSelectedMessage(null);
+            setOptionsVisible(false);
+          }
         }
       })
       .subscribe();
@@ -103,7 +110,7 @@ const Chats: React.FC<ChatsProps> = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentUserId, receiverId]);
+  }, [currentUserId, receiverId, selectedMessage]);
 
   // Fetch all messages between the two users
   const fetchMessages = async () => {
@@ -167,6 +174,11 @@ const Chats: React.FC<ChatsProps> = () => {
   // Delete a message
   const deleteMessage = async (message: ChatMessage) => {
     try {
+      // Update UI immediately before the server responds
+      setMessages(prevMessages => 
+        prevMessages.filter(msg => msg.id !== message.id)
+      );
+      
       const { error } = await supabase
         .from('chats')
         .delete()
@@ -174,6 +186,8 @@ const Chats: React.FC<ChatsProps> = () => {
         
       if (error) {
         console.error('Error deleting message:', error);
+        // Revert the optimistic update if there was an error
+        fetchMessages();
         Alert.alert('Error', 'Failed to delete message. Please try again.');
         return;
       }
@@ -184,6 +198,8 @@ const Chats: React.FC<ChatsProps> = () => {
       
     } catch (error) {
       console.error('Error deleting message:', error);
+      // Revert the optimistic update if there was an error
+      fetchMessages();
       Alert.alert('Error', 'Failed to delete message. Please try again.');
     }
   };
@@ -193,6 +209,12 @@ const Chats: React.FC<ChatsProps> = () => {
     if (!editText.trim() || !selectedMessage) return;
     
     try {
+      // Apply optimistic update
+      const updatedMessage = {...selectedMessage, chats: editText.trim()};
+      setMessages(prevMessages => 
+        prevMessages.map(msg => msg.id === selectedMessage.id ? updatedMessage : msg)
+      );
+      
       const { error } = await supabase
         .from('chats')
         .update({ chats: editText.trim() })
@@ -200,6 +222,8 @@ const Chats: React.FC<ChatsProps> = () => {
         
       if (error) {
         console.error('Error updating message:', error);
+        // Revert the optimistic update
+        fetchMessages();
         Alert.alert('Error', 'Failed to update message. Please try again.');
         return;
       }
@@ -211,6 +235,8 @@ const Chats: React.FC<ChatsProps> = () => {
       
     } catch (error) {
       console.error('Error updating message:', error);
+      // Revert the optimistic update
+      fetchMessages();
       Alert.alert('Error', 'Failed to update message. Please try again.');
     }
   };
@@ -245,7 +271,7 @@ const Chats: React.FC<ChatsProps> = () => {
         },
         {
           text: 'Delete', 
-          onPress: () => selectedMessage && deleteMessage(selectedMessage),
+          onPress: () => {selectedMessage && deleteMessage(selectedMessage)},
           style: 'destructive'
         }
       ]
