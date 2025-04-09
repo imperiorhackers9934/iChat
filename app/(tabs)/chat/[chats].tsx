@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, KeyboardAvoidingView, Platform,ActivityIndicator,Alert,Pressable,Modal} from 'react-native';
+import { View, Text, Image,TextInput, TouchableOpacity, FlatList, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Pressable, Modal } from 'react-native';
 import { supabase } from '@/utils/supabase';
 import { useLocalSearchParams } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -30,7 +30,7 @@ const Chats: React.FC<ChatsProps> = () => {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editText, setEditText] = useState('');
   const [optionsVisible, setOptionsVisible] = useState(false);
-  
+
   const flatListRef = useRef<FlatList>(null);
   const params = useLocalSearchParams();
   const currentUserId = params.currentUserId as string;
@@ -40,17 +40,17 @@ const Chats: React.FC<ChatsProps> = () => {
   // Fetch messages when component mounts or when users change
   useEffect(() => {
     fetchMessages();
-    
+
     // Set up real-time subscription for new messages
     const channel = supabase
       .channel('chats-channel')
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
         table: 'chats'
       }, (payload) => {
         const newMsg = payload.new as ChatMessage;
-        
+
         // Ensure the new message belongs to this conversation
         if (
           (newMsg.sender === currentUserId && newMsg.receiver === receiverId) ||
@@ -69,13 +69,13 @@ const Chats: React.FC<ChatsProps> = () => {
         table: 'chats'
       }, (payload) => {
         const updatedMsg = payload.new as ChatMessage;
-        
+
         // Update the message in our state if it belongs to this conversation
         if (
           (updatedMsg.sender === currentUserId && updatedMsg.receiver === receiverId) ||
           (updatedMsg.sender === receiverId && updatedMsg.receiver === currentUserId)
         ) {
-          setMessages((prevMessages) => 
+          setMessages((prevMessages) =>
             prevMessages.map(msg => msg.id === updatedMsg.id ? updatedMsg : msg)
           );
         }
@@ -87,14 +87,21 @@ const Chats: React.FC<ChatsProps> = () => {
       }, (payload) => {
         // For delete events, payload.old contains the deleted record
         const deletedMsg = payload.old as ChatMessage;
-        
+
         if (
           (deletedMsg.sender === currentUserId && deletedMsg.receiver === receiverId) ||
           (deletedMsg.sender === receiverId && deletedMsg.receiver === currentUserId)
         ) {
-          setMessages((prevMessages) => 
+          // Use strict equality operator for reliable filtering
+          setMessages((prevMessages) =>
             prevMessages.filter(msg => msg.id !== deletedMsg.id)
           );
+
+          // If the deleted message was selected, clear the selection
+          if (selectedMessage && selectedMessage.id === deletedMsg.id) {
+            setSelectedMessage(null);
+            setOptionsVisible(false);
+          }
         }
       })
       .subscribe();
@@ -103,7 +110,7 @@ const Chats: React.FC<ChatsProps> = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentUserId, receiverId]);
+  }, [currentUserId, receiverId, selectedMessage]);
 
   // Fetch all messages between the two users
   const fetchMessages = async () => {
@@ -122,7 +129,7 @@ const Chats: React.FC<ChatsProps> = () => {
       }
 
       setMessages(data || []);
-      
+
       // Scroll to bottom after messages load
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: false });
@@ -137,27 +144,27 @@ const Chats: React.FC<ChatsProps> = () => {
   // Send a new message
   const sendMessage = async () => {
     if (!newMessage.trim()) return;
-    
+
     try {
       const newMsg = {
         chats: newMessage.trim(),
         sender: currentUserId,
         receiver: receiverId,
       };
-      
+
       const { error } = await supabase
         .from('chats')
         .insert([newMsg]);
-        
+
       if (error) {
         console.error('Error sending message:', error);
         Alert.alert('Error', 'Failed to send message. Please try again.');
         return;
       }
-      
+
       // Clear input field after sending
       setNewMessage('');
-      
+
     } catch (error) {
       console.error('Error sending message:', error);
       Alert.alert('Error', 'Failed to send message. Please try again.');
@@ -167,23 +174,32 @@ const Chats: React.FC<ChatsProps> = () => {
   // Delete a message
   const deleteMessage = async (message: ChatMessage) => {
     try {
+      // Update UI immediately before the server responds
+      setMessages(prevMessages =>
+        prevMessages.filter(msg => msg.id !== message.id)
+      );
+
       const { error } = await supabase
         .from('chats')
         .delete()
         .eq('id', message.id);
-        
+
       if (error) {
         console.error('Error deleting message:', error);
+        // Revert the optimistic update if there was an error
+        fetchMessages();
         Alert.alert('Error', 'Failed to delete message. Please try again.');
         return;
       }
-      
+
       // Close message options after action
       setSelectedMessage(null);
       setOptionsVisible(false);
-      
+
     } catch (error) {
       console.error('Error deleting message:', error);
+      // Revert the optimistic update if there was an error
+      fetchMessages();
       Alert.alert('Error', 'Failed to delete message. Please try again.');
     }
   };
@@ -191,26 +207,36 @@ const Chats: React.FC<ChatsProps> = () => {
   // Update a message
   const updateMessage = async () => {
     if (!editText.trim() || !selectedMessage) return;
-    
+
     try {
+      // Apply optimistic update
+      const updatedMessage = { ...selectedMessage, chats: editText.trim() };
+      setMessages(prevMessages =>
+        prevMessages.map(msg => msg.id === selectedMessage.id ? updatedMessage : msg)
+      );
+
       const { error } = await supabase
         .from('chats')
         .update({ chats: editText.trim() })
         .eq('id', selectedMessage.id);
-        
+
       if (error) {
         console.error('Error updating message:', error);
+        // Revert the optimistic update
+        fetchMessages();
         Alert.alert('Error', 'Failed to update message. Please try again.');
         return;
       }
-      
+
       // Close modals after successful update
       setEditModalVisible(false);
       setOptionsVisible(false);
       setSelectedMessage(null);
-      
+
     } catch (error) {
       console.error('Error updating message:', error);
+      // Revert the optimistic update
+      fetchMessages();
       Alert.alert('Error', 'Failed to update message. Please try again.');
     }
   };
@@ -234,7 +260,7 @@ const Chats: React.FC<ChatsProps> = () => {
   // Confirm deletion with dialog
   const handleDeletePress = () => {
     setOptionsVisible(false);
-    
+
     Alert.alert(
       'Delete Message',
       'Are you sure you want to delete this message?',
@@ -244,8 +270,8 @@ const Chats: React.FC<ChatsProps> = () => {
           style: 'cancel'
         },
         {
-          text: 'Delete', 
-          onPress: () => selectedMessage && deleteMessage(selectedMessage),
+          text: 'Delete',
+          onPress: () => { selectedMessage && deleteMessage(selectedMessage) },
           style: 'destructive'
         }
       ]
@@ -258,11 +284,10 @@ const Chats: React.FC<ChatsProps> = () => {
     setEditModalVisible(false);
     setSelectedMessage(null);
   };
-
   // Render a single message
   const renderMessage = ({ item }: { item: ChatMessage }) => {
     const isCurrentUser = item.sender === currentUserId;
-    
+
     return (
       <Pressable
         onLongPress={() => handleLongPress(item)}
@@ -293,15 +318,19 @@ const Chats: React.FC<ChatsProps> = () => {
       keyboardVerticalOffset={100}
     >
       <View style={styles.header}>
+        <Image
+          source={{ uri: params.userimg }}
+          style={styles.profileImage}
+        />
         <Text style={styles.headerText}>Chat with {username}</Text>
         <View style={{ flexDirection: 'row', position: 'absolute', right: 10 }}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={{ padding: 10 }}
             onPress={() => Alert.alert('Video Call', 'Video call feature coming soon!')}
           >
             <MaterialCommunityIcons name="video" size={30} color="white" />
           </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={{ padding: 10 }}
             onPress={() => Alert.alert('Voice Call', 'Voice call feature coming soon!')}
           >
@@ -309,7 +338,7 @@ const Chats: React.FC<ChatsProps> = () => {
           </TouchableOpacity>
         </View>
       </View>
-      
+
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#0084ff" />
@@ -324,7 +353,7 @@ const Chats: React.FC<ChatsProps> = () => {
           contentContainerStyle={styles.messagesListContent}
         />
       )}
-      
+
       <View style={styles.inputContainer}>
         <TextInput
           style={styles.input}
@@ -333,11 +362,11 @@ const Chats: React.FC<ChatsProps> = () => {
           placeholder="Type a message..."
           multiline
         />
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[
             styles.sendButton,
             !newMessage.trim() && styles.disabledButton
-          ]} 
+          ]}
           onPress={sendMessage}
           disabled={!newMessage.trim()}
         >
@@ -384,14 +413,14 @@ const Chats: React.FC<ChatsProps> = () => {
               autoFocus
             />
             <View style={styles.editModalButtons}>
-              <TouchableOpacity 
-                style={[styles.editModalButton, styles.cancelButton]} 
+              <TouchableOpacity
+                style={[styles.editModalButton, styles.cancelButton]}
                 onPress={() => setEditModalVisible(false)}
               >
                 <Text style={styles.buttonText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.editModalButton, styles.saveButton]} 
+              <TouchableOpacity
+                style={[styles.editModalButton, styles.saveButton]}
                 onPress={updateMessage}
               >
                 <Text style={styles.buttonText}>Save</Text>
@@ -408,6 +437,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  profileImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 10,
   },
   header: {
     padding: 15,

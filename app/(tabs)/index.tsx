@@ -11,7 +11,7 @@ interface ChatUser {
   userid: string;
   username: string;
   isactive: boolean;
-  avatar?: any;
+  userimg?: string;
   lastMessage?: string;
   timestamp?: string;
   unread?: number;
@@ -39,6 +39,7 @@ export default function Index() {
     const muser = { 
       userid: userId,
       username: username,
+      userimg:'https://hximboiknruyncrgrqjk.supabase.co/storage/v1/object/public/userimg//avatar.png',
       isactive: true
     };
     
@@ -162,25 +163,21 @@ export default function Index() {
           (chat.sender === user.id && chat.receiver === user.userid)
         );
         
-        // Count unread messages (messages where current user is receiver and hasn't read yet)
-        // In a real app, you'd have a read_status field to track this
+        // Count unread messages
         const { data: unreadData, error: unreadError } = await supabase
           .from('chats')
           .select('*')
           .eq('sender', user.userid)
           .eq('receiver', user.id)
-          // Add condition for read status when you implement it
-          // .eq('read_status', false)
           
         const unreadCount = unreadError ? 0 : (unreadData?.length || 0);
         
         return {
           ...user,
-          avatar: defaultAvatar, // Use default avatar for now
           lastMessage: latestChat ? latestChat.chats : '',
           timestamp: latestChat ? formatTimestamp(latestChat.created_at) : '',
           unread: unreadCount,
-          online: user.isactive // Use isactive field to determine online status
+          online: user.isactive
         };
       }));
       
@@ -228,7 +225,8 @@ export default function Index() {
         chats: userId,
         currentUserId: user.id,
         receiverId: userId,
-        username: username
+        username: username,
+        userimg: chatUsers.find((user) => user.userid === userId)?.userimg || defaultAvatar,
       }
     });
   };
@@ -240,7 +238,11 @@ export default function Index() {
       onPress={() => navigateToChatDetail(item.userid, item.username)}
     >
       <View style={styles.avatarContainer}>
-        <Image source={item.avatar || defaultAvatar} style={styles.avatar} />
+        <Image 
+          source={item.userimg ? { uri: item.userimg } : defaultAvatar} 
+          style={styles.avatar} 
+          defaultSource={defaultAvatar}
+        />
         {item.online && <View style={styles.onlineIndicator} />}
       </View>
       
@@ -296,7 +298,7 @@ export default function Index() {
           <Text style={styles.headerTitle}>iChat</Text>
           <View style={styles.headerActions}>
             <TouchableOpacity style={styles.headerButton}>
-              <Text style={styles.version}>v0.0.1(beta)</Text>
+              <Text style={styles.version}>v1.0.0</Text>
             </TouchableOpacity>
           </View>
         </View>

@@ -1,15 +1,13 @@
 import { Redirect } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
-import { View, Text } from 'react-native';
+import {  ActivityIndicator } from 'react-native';
 
 export default function Index() {
   const { isSignedIn, isLoaded } = useAuth();
 
   if (!isLoaded) {
     return (
-      <View>
-        <Text>Loading...</Text>
-      </View>
+        <ActivityIndicator size="large" color="#0084ff" />
     ); //Completely Resolve Auth then Redirect it
   }
 

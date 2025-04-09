@@ -1,21 +1,6 @@
 import { useSignIn, useAuth } from '@clerk/clerk-expo'
 import { Link, useRouter } from 'expo-router'
-import { 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  View, 
-  StyleSheet, 
-  Image, 
-  KeyboardAvoidingView, 
-  Platform, 
-  SafeAreaView, 
-  ScrollView, 
-  Dimensions, 
-  Alert,
-  Modal,
-  ActivityIndicator
-} from 'react-native'
+import { Text, TextInput, TouchableOpacity, View, StyleSheet, Image, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, Dimensions, Alert,Modal,ActivityIndicator} from 'react-native'
 import React, { useState, useEffect } from 'react'
 import { StatusBar } from 'expo-status-bar'
 import { MaterialIcons } from '@expo/vector-icons'
