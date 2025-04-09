@@ -32,9 +32,9 @@ export default function SignUp() {
       await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
       // Set 'pendingVerification' to true to display second for and capture OTP code
       setPendingVerification(true);
-    } catch (err) {
+    } catch (err:any) {
       //Pushes an alert to the user if sign-up fails
-      Alert.alert('Failed to sign up. Please try again with different password.');
+      Alert.alert('Sign Up Failed',err.message || 'Please try again later.');
       console.error(err);
     } finally {
       setIsLoading(false);
