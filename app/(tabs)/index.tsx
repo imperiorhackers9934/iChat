@@ -225,7 +225,8 @@ export default function Index() {
         chats: userId,
         currentUserId: user.id,
         receiverId: userId,
-        username: username
+        username: username,
+        userimg: chatUsers.find((user) => user.userid === userId)?.userimg || defaultAvatar,
       }
     });
   };

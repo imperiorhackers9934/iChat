@@ -25,7 +25,6 @@ export default function Profile() {
   const [newImage, setNewImage] = useState<string | null>(null);
 
   //Delete Account States
-  // Delete account state
   const [deleteAccountModalVisible, setDeleteAccountModalVisible] = useState(false);
   const [deleteAccountPassword, setDeleteAccountPassword] = useState('');
   const [deleteAccountLoading, setDeleteAccountLoading] = useState(false);
@@ -123,8 +122,6 @@ export default function Profile() {
             // Update profile with the new image URL
             setProfileData((prev) => ({ ...prev, profileImage: urlData.publicUrl }));
 
-            // No need to call handleImageUpload here if it's causing issues
-            // That function can be called separately after confirming storage upload works
             handleImageUpload(urlData.publicUrl)
 
             Alert.alert('Success', 'Image uploaded successfully!');
@@ -209,8 +206,6 @@ export default function Profile() {
 
       // If email was changed, update primary email
       if (profileData.email !== user.primaryEmailAddress?.emailAddress) {
-        // Note: This is simplified. Clerk requires email verification
-        // for changing primary email address
         Alert.alert('Email Update',
           'Email changes require verification. Please check your email to verify the new address.');
       }
@@ -289,7 +284,7 @@ export default function Profile() {
       }
 
       // Verify password before deletion (simplified)
-      // In a real app, you'd want to verify the password with Clerk first
+
 
       // Delete user data from Supabase first
       try {
@@ -373,7 +368,7 @@ export default function Profile() {
             source={{
               uri: newImage ||
                 profileData.profileImage ||
-                'https://via.placeholder.com/150' // Corrected placeholder URL
+                'https://via.placeholder.com/150'
             }}
             style={styles.profileImage}
           />
